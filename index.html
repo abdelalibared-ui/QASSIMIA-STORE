@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>القاسمية | المتجر</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--green:#17352b;--gold:#c6a76a;--bg:#f5f3ee;--card:#fff;--muted:#777}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);font-family:Tahoma,Arial,sans-serif;color:#202820}
+header{background:var(--green);color:white;padding:22px 18px 18px;text-align:center}
+header h1{margin:0;color:#e4d2a8;font-size:27px}header p{margin:7px 0 0;color:#eee2c8}
+main{max-width:850px;margin:auto;padding:16px}.section-title{display:flex;justify-content:space-between;align-items:center}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.card{background:var(--card);border-radius:15px;overflow:hidden;box-shadow:0 2px 10px #0000000b}
+.card img{width:100%;height:155px;object-fit:cover;background:#e9e5dc}.placeholder{height:155px;display:grid;place-items:center;background:#e9e5dc;color:#786b54;font-size:42px}
+.info{padding:11px}.info h3{margin:0 0 7px;font-size:16px}.muted{color:var(--muted);font-size:12px}.price{font-weight:bold;color:var(--green);margin:9px 0}
+button{border:0;border-radius:10px;padding:11px 14px;background:var(--green);color:#fff;font-weight:bold;cursor:pointer}
+button.secondary{background:#e8e4da;color:#24352d}button:disabled{opacity:.45}
+.panel{background:white;border-radius:15px;padding:15px;margin-top:16px}
+label{display:block;font-size:13px;margin:10px 0 5px}input,select,textarea{width:100%;padding:11px;border:1px solid #ddd8ce;border-radius:9px;font:inherit;background:white}
+.row{display:flex;gap:8px}.row>*{flex:1}.cart-line{padding:10px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;gap:8px}
+.hidden{display:none}.total{font-size:18px;font-weight:bold;color:var(--green)}
+.notice{padding:12px;border-radius:10px;background:#eef5ef;margin-top:12px}
+@media(min-width:650px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.card img,.placeholder{height:190px}}
+</style></head>
+<body>
+<header><h1>القاسمية</h1><p>إبداع وتألق · متجر اللباس الرجالي</p></header>
+<main>
+<div class="section-title"><h2>منتجاتنا</h2><button class="secondary" onclick="showCart()">🛒 السلة (<span id="cartCount">0</span>)</button></div>
+<div id="products" class="grid"><p>جارٍ تحميل المنتجات...</p></div>
+<section id="cartPanel" class="panel hidden">
+<h2>سلة المشتريات</h2><div id="cartLines"></div><p class="total">المجموع: <span id="cartTotal">0</span> دج</p>
+<h3>بيانات التوصيل</h3>
+<label>الاسم الكامل</label><input id="name" autocomplete="name">
+<label>رقم الهاتف</label><input id="phone" type="tel" placeholder="05xxxxxxxx">
+<div class="row"><div><label>الولاية</label><input id="wilaya"></div><div><label>البلدية</label><input id="municipality"></div></div>
+<label>العنوان بالتفصيل</label><input id="address">
+<label>ملاحظات (اختياري)</label><textarea id="notes" rows="2"></textarea>
+<label>طريقة الدفع</label><select id="payment"><option value="cod">الدفع عند الاستلام</option></select>
+<button style="width:100%;margin-top:14px" onclick="submitOrder()">تأكيد الطلب</button>
+<div id="result"></div>
+</section>
+</main>
+<script>
+const tg=window.Telegram?.WebApp; if(tg){tg.ready();tg.expand()}
+let products=[],cart=[],config={};
+const money=n=>new Intl.NumberFormat('ar-DZ').format(n);
+async function init(){
+ try{
+  [products,config]=await Promise.all([fetch('/api/products').then(r=>r.json()),fetch('/api/config').then(r=>r.json())]);
+  if(config.electronic_payment_enabled)document.getElementById('payment').insertAdjacentHTML('beforeend','<option value="electronic">الدفع الإلكتروني</option>');
+  renderProducts();
+ }catch(e){document.getElementById('products').innerHTML='<p>تعذر تحميل المتجر. حاول لاحقاً.</p>'}
+}
+function renderProducts(){
+ const root=document.getElementById('products');
+ if(!products.length){root.innerHTML='<p>لا توجد منتجات منشورة حالياً.</p>';return}
+ root.innerHTML=products.map(p=>`<article class="card">
+ ${p.image_url?`<img src="${esc(p.image_url)}" alt="${esc(p.name)}">`:'<div class="placeholder">القاسمية</div>'}
+ <div class="info"><h3>${esc(p.name)}</h3><div class="muted">${esc(p.description||'')}</div>
+ <div class="price">${p.price_dzd>0?money(p.price_dzd)+' دج':'السعر عند الاستفسار'}</div>
+ <button onclick="choose(${p.id})" ${p.stock<=0?'disabled':''}>${p.stock>0?'اختر المنتج':'غير متوفر حالياً'}</button></div></article>`).join('');
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function choose(id){
+ const p=products.find(x=>x.id===id); if(!p)return;
+ if(p.price_dzd<=0){alert('يرجى مراسلتنا لتأكيد سعر المنتج.');return}
+ const color=prompt('اختر اللون:\n'+p.colors.join('، '),p.colors[0]||'');
+ if(color===null)return;if(!p.colors.includes(color)){alert('اللون غير متاح');return}
+ const size=prompt('اختر المقاس:\n'+p.sizes.join('، '),p.sizes[0]||'');
+ if(size===null)return;if(!p.sizes.includes(size)){alert('المقاس غير متاح');return}
+ const existing=cart.find(x=>x.product_id===id&&x.color===color&&x.size===size);
+ if(existing){if(existing.quantity>=p.stock){alert('الكمية المطلوبة غير متوفرة');return}existing.quantity++}
+ else cart.push({product_id:id,name:p.name,color,size,quantity:1,price:p.price_dzd,stock:p.stock});
+ renderCart();showCart();
+}
+function renderCart(){
+ document.getElementById('cartCount').textContent=cart.reduce((a,x)=>a+x.quantity,0);
+ document.getElementById('cartLines').innerHTML=cart.length?cart.map((x,i)=>`<div class="cart-line"><div><b>${esc(x.name)}</b><div class="muted">${esc(x.color)} · ${esc(x.size)} · ${x.quantity} × ${money(x.price)} دج</div></div><button class="secondary" onclick="removeItem(${i})">حذف</button></div>`).join(''):'السلة فارغة';
+ document.getElementById('cartTotal').textContent=money(cart.reduce((a,x)=>a+x.quantity*x.price,0));
+}
+function removeItem(i){cart.splice(i,1);renderCart()}
+function showCart(){document.getElementById('cartPanel').classList.remove('hidden');document.getElementById('cartPanel').scrollIntoView({behavior:'smooth'})}
+async function submitOrder(){
+ if(!cart.length){alert('السلة فارغة');return}
+ const payload={customer_name:v('name'),phone:v('phone'),wilaya:v('wilaya'),municipality:v('municipality'),address:v('address'),notes:v('notes'),payment_method:v('payment'),items:cart.map(x=>({product_id:x.product_id,color:x.color,size:x.size,quantity:x.quantity}))};
+ if(Object.values(payload).slice(0,5).some(x=>!x)){alert('يرجى ملء بيانات التوصيل كاملة');return}
+ const headers={'Content-Type':'application/json'};if(tg?.initData)headers['X-Telegram-Init-Data']=tg.initData;
+ try{
+  const res=await fetch('/api/orders',{method:'POST',headers,body:JSON.stringify(payload)});const data=await res.json();
+  if(!res.ok)throw new Error(data.detail||'تعذر تسجيل الطلب');
+  document.getElementById('result').innerHTML=`<div class="notice">تم تسجيل طلبك بنجاح! رقم الطلب: <b>#${data.order_id}</b><br>الإجمالي: ${money(data.total_dzd)} دج</div>`;
+  if(data.payment_url&&payload.payment_method==='electronic')window.open(data.payment_url,'_blank');
+  cart=[];renderCart();await init();
+ }catch(e){alert(e.message)}
+}
+function v(id){return document.getElementById(id).value.trim()}
+init();renderCart();
+</script></body></html>
